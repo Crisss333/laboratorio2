@@ -275,49 +275,84 @@ informativo ante un corpus sin títulos válidos.
 
 ### Pregunta 1. ¿Para qué sirve BeautifulSoup y cómo se diferencia de requests?
 
-BeautifulSoup analiza el HTML y permite localizar elementos, atributos y textos
-dentro de su estructura. Por su parte, `requests` realiza la solicitud HTTP y
-obtiene la respuesta del servidor. En el laboratorio se utilizó `requests` para
-descargar la página y BeautifulSoup para extraer los campos de sus libros.
+Son dos herramientas que se complementan, pero hacen cosas distintas. `requests`
+solo se encarga de la parte de red: hace la petición HTTP a la página y nos
+devuelve la respuesta (el código de estado y el HTML como texto). No entiende
+nada de lo que viene dentro, para él es solo un string.
+
+BeautifulSoup entra después. Toma ese HTML y lo convierte en un árbol que se
+puede recorrer, de modo que podemos pedirle cosas como "todos los
+`article.product_pod`" o "el atributo `title` del enlace" sin tener que cortar
+texto a mano. En nuestro `scraper.py` se ve clarito: `requests.get()` descarga la
+página y `BeautifulSoup(...).select()` saca el título, precio, disponibilidad y
+estrellas de cada libro.
 
 ### Pregunta 2. ¿Qué riesgo existe al depender de selectores HTML específicos si el sitio cambia?
 
-Los selectores dependen de etiquetas, clases y jerarquías concretas. Si cambia la
-estructura del sitio, pueden dejar de encontrar elementos o extraer información
-incorrecta. Por ello, se validaron los campos y se emitieron advertencias ante
-registros incompletos, en lugar de asumir que toda extracción era correcta.
+El scraper queda "amarrado" a cómo está armado el HTML hoy. Si mañana el sitio
+renombra la clase `price_color` o cambia `star-rating Three` por otro formato,
+el selector deja de encontrar el elemento.
+
+Lo peligroso es que muchas veces no se cae con un error evidente: puede devolver
+listas vacías o, peor, datos mal asignados (por ejemplo, tomar otro texto como
+si fuera el precio) sin que nadie se dé cuenta. Por eso en el código validamos
+cada campo y, si falta alguno, se lanza una advertencia y se salta ese libro en
+vez de guardar basura en el CSV.
 
 ### Pregunta 3. ¿Por qué normalizar los títulos antes de implementar la búsqueda?
 
-La normalización reduce diferencias de mayúsculas y espacios que no cambian la
-identidad del título. Se creó una columna consistente para los documentos y se
-normalizaron también las consultas. Esto facilita las coincidencias y permite
-que `the` y `THE` produzcan el mismo ranking.
+Para que el buscador no trate como distintas cosas que en realidad son iguales.
+"The", "the" y "THE" son la misma palabra para una persona, pero sin normalizar
+podrían terminar comparándose como textos diferentes. Lo mismo pasa con espacios
+extra al inicio o al final.
+
+Al pasar todo a minúsculas en `titulo_normalizado` (y hacer lo mismo con la
+consulta) los dos lados quedan en el mismo formato. Eso es justamente lo que
+permite que la prueba T3 funcione. De paso, también nos sirvió para detectar
+duplicados que solo se diferenciaban en mayúsculas.
 
 ### Pregunta 4. ¿Qué función cumple fit_transform() sobre los títulos y por qué se usa transform() para la consulta?
 
-`fit_transform()` aprende el vocabulario y los pesos IDF de la colección y
-construye la matriz TF-IDF de los títulos. La consulta se representa con
-`transform()` para utilizar exactamente el vocabulario y los pesos aprendidos,
-sin reajustar el índice. Así, los vectores de la consulta y de los documentos
-pertenecen al mismo espacio y pueden compararse mediante el coseno.
+`fit_transform()` hace dos cosas de una vez. Con el *fit* "aprende" la colección:
+arma el vocabulario con todas las palabras de los 20 títulos y calcula el IDF de
+cada una (qué tan rara o común es). Con el *transform* convierte cada título en
+un vector usando eso que acaba de aprender, y así queda la matriz TF-IDF.
+
+Para la consulta usamos solo `transform()` porque no queremos volver a aprender
+nada. Si hiciéramos `fit` con la consulta, el vocabulario cambiaría y el vector
+resultante no tendría las mismas dimensiones ni los mismos pesos que la matriz,
+así que la comparación con el coseno no tendría sentido (o directamente daría
+error). Con `transform()` la consulta queda en el mismo "espacio" que los títulos.
 
 ### Pregunta 5. Si dos libros obtienen similitudes de 0.75 y 0.20 para la misma consulta, ¿cuál se muestra primero y qué indica una puntuación cercana a cero?
 
-Se muestra primero el libro con **0.75**, porque el ranking se ordena de mayor a
-menor similitud. Una puntuación cercana a cero indica poca coincidencia entre
-las representaciones vectoriales. En esta configuración TF-IDF no negativa, una
-puntuación de cero indica que no se comparten términos del vocabulario; no
-significa que se haya evaluado la relación semántica entre los textos.
+Primero aparece el de **0.75**, porque los resultados se ordenan de mayor a menor
+similitud.
+
+Una puntuación cercana a cero quiere decir que el título y la consulta casi no
+tienen términos en común (o que los que comparten pesan muy poco, como pasa con
+palabras muy repetidas). Si es exactamente cero, no comparten ninguna palabra del
+vocabulario, y en nuestro código ese libro ni siquiera se muestra. Ojo que esto
+mide coincidencia de palabras, no significado: un libro podría tratar del tema
+buscado y aun así sacar cero.
 
 ### Pregunta 6. ¿Qué limitación tiene buscar solo por palabras presentes en títulos mediante TF-IDF y qué mejora concreta se propone?
 
-La recuperación depende de coincidencias léxicas y únicamente considera el texto
-del título. Puede omitir libros relacionados cuando la consulta utiliza un sinónimo
-o una palabra que no aparece allí. Se propone incorporar un diccionario de
-sinónimos para expandir la consulta antes de aplicar `transform()`, conservando
-el mismo vocabulario del índice. La mejora se plantea como trabajo posterior y
-no se presenta como una función implementada en esta entrega.
+La principal limitación es que el buscador solo encuentra lo que está escrito
+literalmente en el título. Algunos casos que lo dejan en evidencia:
+
+- Si buscas un sinónimo ("voyage" en vez de "travel"), no aparece nada.
+- Las variaciones de una palabra no se relacionan: "boat" y "boats" son términos
+  distintos para el vectorizador.
+- Un título corto o poco descriptivo no dice de qué trata el libro, así que
+  queda prácticamente invisible para muchas búsquedas.
+
+Como mejora concreta proponemos ampliar lo que se indexa: además del título,
+incluir la descripción y la categoría de cada libro (están en la ficha individual
+de cada uno en el sitio). Eso le daría al TF-IDF mucho más texto con que trabajar.
+Complementariamente se podría expandir la consulta con un diccionario de
+sinónimos antes del `transform()`. Ninguna de las dos está implementada en esta
+entrega; las dejamos como trabajo futuro.
 
 ## 8. Alcance y comprobación de la entrega
 
