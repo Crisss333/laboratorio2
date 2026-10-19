@@ -2,9 +2,7 @@
 
 **Asignatura:** Ingeniería Web Avanzada, OII436-1.
 
-**Integrantes:** Cristopher Dauros y Carlos Ruz.
-
-**Modalidad:** trabajo en pareja.
+**Integrantes:** Cristopher Dauros, Carlos Ruz.
 
 **Repositorio:** [Crisss333/laboratorio2](https://github.com/Crisss333/laboratorio2).
 
