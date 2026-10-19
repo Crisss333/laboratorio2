@@ -212,8 +212,8 @@ se descartaron las iguales a cero. Los empates conservan el orden del CSV.
 
 La función `buscar(consulta, top_k=5)` admite hasta cinco resultados. Para realizar
 el desafío se dejó la llamada de consola como **`buscar(consulta, top_k=3)`**.
-El índice se construye en la primera consulta válida y se reutiliza mientras
-permanece cargado el módulo. Las consultas se procesan con `strip().lower()`.
+El índice se construye una sola vez al cargar el script y se reutiliza en cada
+consulta. Las consultas se procesan con `strip().lower()`.
 
 Se eligieron `the` y `life`, palabras comprobadas en los títulos extraídos. Se
 obtuvieron los siguientes resultados al ejecutar `python buscador.py`:
